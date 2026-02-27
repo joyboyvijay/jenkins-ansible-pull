@@ -1,0 +1,50 @@
+---
+- name: Deploy full website to EC2
+  hosts: webservers
+  become: yes
+  gather_facts: yes
+
+  vars:
+    src_dir: "{{ lookup('env', 'WORKSPACE') }}/web-src"
+    dest_dir: "/var/www/html"
+
+  tasks:
+
+    - name: Install Rsync on EC2
+      ansible.builtin.apt:
+        name: rsync
+        state: present
+        update_cache: yes
+
+    - name: Ensure destination directory exists
+      ansible.builtin.file:
+        path: "{{ dest_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Sync full website (ALL files + folders)
+      ansible.builtin.synchronize:
+        src: "{{ src_dir }}/"
+        dest: "{{ dest_dir }}/"
+        recursive: yes
+        delete: yes
+        archive: yes
+        rsync_opts:
+          - "--exclude=.git/"
+      delegate_to: localhost
+
+    - name: Fix ownership
+      ansible.builtin.file:
+        path: "{{ dest_dir }}"
+        state: directory
+        recurse: yes
+        owner: www-data
+        group: www-data
+
+    - name: Restart Apache
+      ansible.builtin.service:
+        name: apache2
+        state: restarted
+      when: ansible_os_family == "Debian"
